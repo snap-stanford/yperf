@@ -1,4 +1,5 @@
 #!/usr/bin/env python2.7
+# pylint: disable-msg=C0103, C0111
 import sys
 import os
 import glob
@@ -6,127 +7,10 @@ import json
 import datetime
 import time
 import numpy as np
-import subprocess
 from multiprocessing import Pool
 from time import mktime
 
-invalid_input = True
-SINGLE_FILE = True
 SECS_PER_HOUR = 3600
-BASE_DIR = '../' #The root of the snapworld repo
-WEB_DEPLOY_PATH = BASE_DIR + 'web_deploy/'
-WEB_PATH = BASE_DIR + 'web/'
-
-"Global store of features as key/values"
-data = {}
-
-def process_supervisor_sys_stats(line):
-    """
-    Want to match lines of this format:
-    [2013-10-14 15:08:10,467] [INFO] [3938] [supervisor.py] [timed_sys_stats_reporter] [sys_stats] (cpu_idle 67072360113)
-    """
-    line_data = line.split()
-    if len(line_data) < 7:
-        return
-    time_str = line_data[0][1:] + "-" + line_data[1][:-1]
-    feature = "sys_stats-%s-%s" % (time_str, line_data[7][1:])
-    data[feature] = line_data[8][:-1]
-
-def process_supervisor_timer(line):
-    """
-    Want to match the following lines:
-    [2013-10-13 15:53:12,262] [INFO] [4211] [perf.py] [timer] [superstep-13-overall: GetNbr] 7.82 s
-    [2013-10-13 15:53:12,843] [INFO] [4211] [perf.py] [timer] [prog-0] (step: 14, pid: 14002, prog: GetDistCpp2.py) 0.44 s
-    """
-    line_data = line.split()
-    if len(line_data) < 7:
-        return
-    line_data = line_data[6:]
-    line_data_str = line_data.__str__()
-    if "step" in line_data_str and "pid" in line_data_str and "prog" in line_data_str:
-        prog = line_data[0]
-        step_n = line_data[2]
-        pid = line_data[4]
-        prog_name = line_data[6]
-        time = line_data[7]
-        # Populates superstep-%d-prog-%d-pid-%d-
-        feature = "superstep-%s-%s-pid-%s-%s" % (step_n[:-1], prog[1:-1], pid[:-1], prog_name[:-1])
-        data[feature] = time
-    else:
-        super_step_overall = line_data[0]
-        super_step_name = line_data[1]
-        time = line_data[2]
-        if time.strip() == 's':
-            return
-        feature = super_step_overall[1:-1] + "-local-" + super_step_name[:-1]
-        # Populates "superstep-%d-overall-local-<TaskName>: %d (time in s)"
-        data[feature] = time
-
-def process_supervisor_cum_timer(line):
-    """
-    Trying to match:
-    [2013-10-13 16:29:05,396] [INFO] [20668] [perf.py] [cum_timer] [network] 0.00 s
-    """
-    line_data = line.split()
-    pid = line_data[3][1:-1]
-    resource = line_data[6][1:-1]
-    time = line_data[7]
-    feature = "%s-time-pid-%s" % (resource, pid)
-    data[feature] = time
-
-def process_master(filename):
-    with open(filename) as f:
-        for line in f:
-            if "timer" in line and "step" in line:
-                line_data = line.split()
-                # Stores the superstep-%d-host-%d : time (s)
-                data[line_data[6][1:-1]] = line_data[7]
-
-def process_supervisors():
-    for log_file in glob.glob('/lfs/local/0/' + os.environ["USER"] + '/supervisors/*/execute/supervisor-sh-*'):
-        with open(log_file) as f:
-            for line in f:
-                if "[timer]" in line:
-                    process_supervisor_timer(line)
-                elif "[cum_timer]" in line:
-                    process_supervisor_cum_timer(line)
-                elif "[sys_stats" in line:
-                    process_supervisor_sys_stats(line)
-                # Just parse one file/supervisor log.
-                if SINGLE_FILE:
-                    break
-
-def process(mode):
-    if mode == "supervisor":
-        process_supervisors()
-    else:
-        filename = '/lfs/local/0/' + os.environ["USER"] + '/master.log'
-        process_master(filename)
-
-def get_kv_file(mode):
-    global data
-    data = {}
-    process(mode)
-    return data
-
-#The file prefix that would correspond to a certain struct datetime t.
-def get_yperf_name(t):
-    return 'yperf-' + t.strftime('%Y%m%d-%H')
-
-# TODO make sure no OBOB - should be steps[0] is run start, steps[1] is superstep 1 start, etc.
-def get_step_timestamps(filename):
-    steps = []
-    line_number = 0
-    with open(filename) as f:
-        for line in f:
-            if line_number == 1 or "all hosts completed" in line:
-                if line_number == 1 and ('Starting head server on port' not in line or steps):
-                    print(' *WARNING* First timestamp for file {0} in unexpected location.'.format(filename))
-                line_data = line.split()
-                # Stores the superstep-%d-host-%d : time (s)
-                steps.append(datetime.datetime.strptime(line_data[0][1:] + ' ' + line_data[1].split(',')[0], '%Y-%m-%d %H:%M:%S'))
-            line_number += 1
-    return steps
 
 #Returns set containing all given file type with the extension removed.
 def get_file_names(path = './', ext = 'txt'):
@@ -353,11 +237,12 @@ def create_agg_tables(sum_arr, n_hosts, step_times, agg_col_names, json_path, re
     encoder.FLOAT_REPR = orig_float_repr
 
 # Copies needed HTML/JS files (assumes json already there), then copies entire thing to WWW
-def deploy_to_WWW(run_name):
-    deploy_src_fold = WEB_DEPLOY_PATH + run_name + '/'
-    os.system('cp -r {0}* {1}'.format(WEB_PATH, deploy_src_fold))
-    user = os.environ["USER"]
-    command = 'rsync -avW -e "ssh -i  /lfs/iln01/0/snapworld_key/id_rsa" {0} snapworld@snap.stanford.edu:/lfs/snap/0/snapworld/metrics/{1}'.format(deploy_src_fold, run_name) #TODO Do not hard code iln01 or snap.
+def deploy_to_WWW(run_name, deploy_src_fold):
+    os.system('cp -r deploy_starter/* ' + deploy_src_fold)
+    command = ('rsync -avW -e "ssh -i '
+            '/lfs/iln01/0/snapworld_key/id_rsa" {0}'
+            'snapworld@snap.stanford.edu:/lfs/snap/0/snapworld/metrics/{1}')\
+                    .format(deploy_src_fold, run_name) #TODO Do not hard code iln01 or snap.
     os.system(command)
     print('Now you can view run metrics at http://snapworld.stanford.edu/metrics/{0}/'.format(run_name))
 
@@ -374,14 +259,15 @@ def get_run_info(master_log_name):
 def get_times(times):
     return [mktime(t.timetuple()) for t in times]
 
-def process_run(master_log_name, yp_path, reset):
-    times = get_step_timestamps(master_log_name)
-    run_info = get_run_info(master_log_name)
+def gen_report(report_specs, reset):
+    times = report_specs['step_times']
+    run_info = report_specs['meta_data']
     files = get_file_list(times)
-    run_name = 'metrics-' + times[0].strftime('%Y%m%d-%H%M%S') #TODO add nodes, hours
-    yp_path += run_name + '/'
-    os.system('mkdir -p {0}'.format(yp_path))
-    json_path = WEB_DEPLOY_PATH + run_name + '/json/'
+    run_name = report_specs['run_name']
+    yp_path = run_name + '/data/'
+    os.system('mkdir -p ' + yp_path)
+    deploy_path = run_name + '/deploy/'
+    json_path = deploy_path + '/json/'
     os.system('mkdir -p ' + json_path)
     sum_arr = None
     for supervisor in run_info['hosts']:
@@ -412,7 +298,7 @@ def process_run(master_log_name, yp_path, reset):
                 print(' *ERROR* - epochs for {0} do not match original.'.format(supervisor['id']))
             for col in to_agg:
                 sum_arr[col] = sum_arr[col] + arr[col]
-                max_arr[col] = np.maximum(max_arr[col], arr[col]);
+                max_arr[col] = np.maximum(max_arr[col], arr[col])
         gen_json(arr, json_path, supervisor['id'], reset)
     avg_arr = sum_arr.copy()
     n_hosts = len(run_info['hosts'])
@@ -424,32 +310,34 @@ def process_run(master_log_name, yp_path, reset):
     ind_json = {}
     ind_json['step_times'] = get_times(times)
     ind_json['run_info'] = run_info
-    agg_tables = [{'title': 'Average Table', 'file': 'avg.tb.json', 'type': 'table', 'load': True}, {'title': 'Sums Table', 'file': 'sum.tb.json', 'type': 'table', 'load': True}]
-    agg_graphs = [{'title': 'Mean Graph', 'file': 'avg.gr.json', 'type': 'graph', 'load': True}, {'title': 'Max Graph', 'file': 'max.gr.json', 'type': 'graph', 'load': False}]
-    supervisor_graphs = [{'title': 'Supervisor {} Graph (IP: {})'.format(supervisor['id'], supervisor['host']), 'file': supervisor['id'] + '.gr.json', 'type': 'graph', 'load': False} for supervisor in run_info['hosts']]
+    agg_tables = [{'title': 'Average Table', 'file': 'avg.tb.json', 'type': 'table', 'load': True},
+                  {'title': 'Sums Table', 'file': 'sum.tb.json', 'type': 'table', 'load': True}]
+    agg_graphs = [{'title': 'Mean Graph', 'file': 'avg.gr.json', 'type': 'graph', 'load': True},
+                  {'title': 'Max Graph', 'file': 'max.gr.json', 'type': 'graph', 'load': False}]
+    supervisor_graphs = [
+            {
+                'title': 'Supervisor {} Graph (IP: {})'.format(supervisor['id'], supervisor['host']),
+                'file': supervisor['id'] + '.gr.json',
+                'type': 'graph',
+                'load': False
+            }
+            for supervisor in run_info['hosts']]
     ind_json['views'] = agg_tables + agg_graphs + supervisor_graphs
     dump_json(ind_json, json_path + 'index.json')
-    deploy_to_WWW(run_name)
+    deploy_to_WWW(run_name, deploy_path)
+
+def read_json(input_file):
+    """Will either load json data in file named input_file or load from
+    stdin"""
+    if input_file is not None:
+        with open(input_file, 'w') as fil:
+            return json.load(fil)
+    return json.load(sys.stdin)
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', choices = ['master', 'supervisor', 'process_run'])
-    parser.add_argument('-f', '--filename_master', default = '/lfs/local/0/' + os.environ["USER"] + '/master.log',
-            help = 'If mode is master, use this to specify the filename.')
-    # TODO add -m flag for message and -n flag for number of nodes.
-    parser.add_argument('-y', '--yperf_path', default = '../processed_yperf/')
+    parser.add_argument('input_file', nargs='?')
     parser.add_argument('-r', '--reset', action = 'store_true')
     args = parser.parse_args()
-
-    if args.mode == 'process_run':
-        process_run(args.filename_master, args.yperf_path, args.reset)
-    elif args.mode == 'master':
-        process_master(args.filename_master)
-    elif args.mode == 'supervisor':
-        process_supervisors()
-
-    if args.mode == 'master' or args.mode == 'supervisor':
-        for k, v in data.items():
-            print k + "\t" + v
-
+    gen_report(read_json(args.input_file), args.reset)
