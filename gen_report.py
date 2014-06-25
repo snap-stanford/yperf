@@ -182,6 +182,11 @@ def process_json_series(yperf_path):
     new_files = [f for f in tsv_files if f not in json_files]
     process_files(new_files, gen_json_series, yperf_path)
 
+def get_yperf_name(tm):
+    """ Returns the file prefix that would correspond to a certain struct
+    datetime t. """
+    return 'yperf-' + tm.strftime('%Y%m%d-%H')
+
 def get_file_list(times):
     file_list = []
     curr = times[0]
@@ -260,7 +265,8 @@ def get_times(times):
     return [mktime(t.timetuple()) for t in times]
 
 def gen_report(report_specs, reset):
-    times = report_specs['step_times']
+    times = [datetime.datetime.fromtimestamp(t) for t in
+            report_specs['step_times']]
     run_info = report_specs['meta_data']
     files = get_file_list(times)
     run_name = report_specs['run_name']
