@@ -47,14 +47,14 @@ $(function () {
             max: 150e6,
             opposite: false,
             id: 'disk',
-            title: {text: 'D R/W'}
+            title: {text: 'DISK'}
         },
         {
             min: 0,
             max: 100e6,
             opposite: false,
             id: 'network',
-            title: {text: 'N R/W'}
+            title: {text: 'NETWORK'}
         }];
         $.each(series, function(i, v) {
              if (v.name in AXIS) {

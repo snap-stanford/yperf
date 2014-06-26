@@ -245,7 +245,7 @@ def create_agg_tables(sum_arr, n_hosts, step_times, agg_col_names, json_path, re
 def deploy_to_WWW(run_name, deploy_src_fold):
     os.system('cp -r deploy_starter/* ' + deploy_src_fold)
     command = ('rsync -avW -e "ssh -i '
-            '/lfs/iln01/0/snapworld_key/id_rsa" {0}'
+            '/lfs/iln01/0/snapworld_key/id_rsa" {0} '
             'snapworld@snap.stanford.edu:/lfs/snap/0/snapworld/metrics/{1}')\
                     .format(deploy_src_fold, run_name) #TODO Do not hard code iln01 or snap.
     os.system(command)
@@ -270,14 +270,13 @@ def gen_report(report_specs, reset):
     run_info = report_specs['meta_data']
     files = get_file_list(times)
     run_name = report_specs['run_name']
-    yp_path = run_name + '/data/'
-    os.system('mkdir -p ' + yp_path)
-    deploy_path = run_name + '/deploy/'
+    yp_path = 'reports/' + run_name
+    deploy_path = yp_path + '/deploy/'
     json_path = deploy_path + '/json/'
     os.system('mkdir -p ' + json_path)
     sum_arr = None
     for supervisor in run_info['hosts']:
-        path = yp_path + supervisor['id'] + '/'
+        path = yp_path + '/data/' + supervisor['id'] + '/'
         os.system('mkdir -p ' + path + '{tsv,raw}/')
         ip_addr = supervisor['host']
         file_list = ''
@@ -342,6 +341,8 @@ def read_json(input_file):
 
 if __name__ == '__main__':
     import argparse
+    os.chdir(os.path.dirname(sys.argv[0]))
+    os.system('mkdir -p reports')
     parser = argparse.ArgumentParser()
     parser.add_argument('input_file', nargs='?')
     parser.add_argument('-r', '--reset', action = 'store_true')
