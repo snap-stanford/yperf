@@ -12,28 +12,28 @@ record total cpu, disk, and network performance each second.
 
 gen_report.py
 -------
-As input, takes in a json file with the format
+As input, takes in a json file such as
 
 ```
 {
     "hosts":[
        {
-          "host":"10.79.15.12",
+          "host":"101.39.18.12",
           "port":"9200",
           "id":"1"
        },
        {
-          "host":"10.79.15.13",
+          "host":"101.39.18.9",
           "port":"9200",
           "id":"2"
        },
        {
-          "host":"10.79.15.14",
+          "host":"101.39.18.10",
           "port":"9200",
           "id":"3"
        },
        {
-          "host":"10.79.15.15",
+          "host":"101.39.18.1",
           "port":"9200",
           "id":"4"
        }
