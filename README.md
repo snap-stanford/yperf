@@ -1,4 +1,4 @@
-yperf
+Yperf
 =====
 
 Simple performance monitor for Linux with report summary to inspect
